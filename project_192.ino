@@ -91,7 +91,9 @@ void setup()
   dht.begin();
 
   //  feeds to be subscribed
-  mqtt.subscribe(&dht)
+  mqtt.subscribe(&red);
+  mqtt.subscribe(&green);
+  mqtt.subscribe(&blue);
   
 }
 
