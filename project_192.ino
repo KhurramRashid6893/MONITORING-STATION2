@@ -4,9 +4,9 @@
 #include<DHT.h>
 
 //  rgb led details
-byte rpin = 25;
-byte gpin = 26;
-byte bpin = 27;
+byte rpin = 21;
+byte gpin = 22;
+byte bpin = 18;
 byte rchannel = 0;
 byte gchannel = 1;
 byte bchannel = 2;
