@@ -1,156 +1,182 @@
-#include <WiFi.h>
-#include <Adafruit_BMP085.h>
-#include "Adafruit_MQTT.h"
-#include "Adafruit_MQTT_Client.h"
+#include<WiFi.h>
+#include<Adafruit_MQTT.h>
+#include<Adafruit_MQTT_Client.h>
+#include<DHT.h>
 
-/************************* WiFi Access Point *********************************/
+//  rgb led details
+byte rpin = 25;
+byte gpin = 26;
+byte bpin = 27;
+byte rchannel = 0;
+byte gchannel = 1;
+byte bchannel = 2;
+byte resolution = 8;
+int frequency = 5000;
 
-#define WLAN_SSID       "Khurram_Rashid"
-#define WLAN_PASS       "industrialization"
+//  dht details
+byte dht_pin = 4;
+#define dht_type DHT11
+DHT dht(dht_pin , dht_type);
 
-/************************* Adafruit.io Setup *********************************/
+//  wifi credentials
+const char ssid[] = "Khurram_Rashid";
+const char password[] = "industrialization";
 
-#define AIO_SERVER      "io.adafruit.com"
-#define AIO_SERVERPORT  1883                   // use 8883 for SSL
-#define AIO_USERNAME  "khurram123"
-#define AIO_KEY       "aio_guLL90mzZHU6RmNGrryXbWdPsgwU"
+//  io details
+#define IO_USERNAME  "khurram123"
+#define IO_KEY       "aio_guLL90mzZHU6RmNGrryXbWdPsgwU"
+#define IO_BROKER    "io.adafruit.com"
+#define IO_PORT       1883
 
+//  client details
+WiFiClient wificlient;
+Adafruit_MQTT_Client mqtt(&wificlient , IO_BROKER , IO_PORT , IO_USERNAME , IO_KEY);
 
-
-
-WiFiClient client;
-
-
-
-Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
-
-/****************************** Feeds ***************************************/
-
-// Setup a feed called 'temperature' for publishing.
-// Notice MQTT paths for AIO follow the form: <username>/feeds/<feedname>
-
-Adafruit_MQTT_Publish temperature = Adafruit_MQTT_Publish(&mqtt, "khurram123/feeds/Temperature");
-
-Adafruit_MQTT_Publish humidity = Adafruit_MQTT_Publish(&mqtt, "khurram123/feeds/Humidity");
-
-// Setup a feed called 'sw1' for subscribing to changes.
+/*  
+  Create feed object to be subscribed
+  SYNTAX FOR REFERENCE : 
+  Adafruit_MQTT_Subscribe FEED OBJECT = Adafruit_MQTT_Subscribe(&mqtt , IO_USERNAME"/feeds/FEED NAME");
+*/
 Adafruit_MQTT_Subscribe red = Adafruit_MQTT_Subscribe(&mqtt, "khurram123/feeds/Slider");
 
 Adafruit_MQTT_Subscribe green = Adafruit_MQTT_Subscribe(&mqtt, "khurram123/feeds/Slider");
 
 Adafruit_MQTT_Subscribe blue = Adafruit_MQTT_Subscribe(&mqtt, "khurram123/feeds/Slider");
 
-/*************************** Sketch Code ************************************/
+
+/*  
+  create feed objects to publish data
+  SYNTAX FOR REFERENCE : 
+  Adafruit_MQTT_Publish feed object = Adafruit_MQTT_Publish(&mqtt , IO_USERNAME"/feeds/FEED NAME");  
+ */
+Adafruit_MQTT_Publish tempc = Adafruit_MQTT_Publish(&mqtt, "khurram123/feeds/Temperature");
+Adafruit_MQTT_Publish tempf = Adafruit_MQTT_Publish(&mqtt, "khurram123/feeds/Temperature");
+Adafruit_MQTT_Publish tempk = Adafruit_MQTT_Publish(&mqtt, "khurram123/feeds/Temperature");
+Adafruit_MQTT_Publish humidity = Adafruit_MQTT_Publish(&mqtt, "khurram123/feeds/Humidity");
+Adafruit_MQTT_Publish dew_point = Adafruit_MQTT_Publish(&mqtt, "khurram123/feeds/Humkdity");
 
 
 
-void MQTT_connect();
 
+void setup()
+{
+  Serial.begin(115200);
 
-
-const int led1 = 21;
-const int led2 = 22;
-const int led3 = 18;
-
-float p;
-float q;
-
-String stringOne, stringTwo;
-
-Adafruit_BMP085 bmp;
-
-void setup() {
-  Serial.begin(9600);
-  delay(10);
-
-  pinMode(led1, OUTPUT);
-  pinMode(led2, OUTPUT);
-  pinMode(led3, OUTPUT);
-
-  digitalWrite(led1, LOW);
-  digitalWrite(led2, LOW);
-  digitalWrite(led3, LOW);
-  
-  Serial.println(F("Adafruit MQTT demo"));
-
-  // Connect to WiFi access point.
-  Serial.println(); Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(WLAN_SSID);
-
-  WiFi.begin(WLAN_SSID, WLAN_PASS);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
+  //  connecting with wifi
+  Serial.print("Connecting with : ");
+  Serial.println(ssid);
+  WiFi.begin(ssid , password);
+  while (WiFi.status() != WL_CONNECTED)
+  {
     Serial.print(".");
+    delay(500);
   }
   Serial.println();
+  Serial.println("Connected !");
+  Serial.print("IP assigned by AP : ");
+  Serial.println(WiFi.localIP());
+  Serial.println();
 
-  Serial.println("WiFi connected");
-  Serial.println("IP address: "); Serial.println(WiFi.localIP());
+  //  RGB led setup
+  ledcSetup(rchannel , frequency , resolution);
+  ledcSetup(gchannel , frequency , resolution);
+  ledcSetup(bchannel , frequency , resolution);
 
-  // Setup MQTT subscription for sw1 feed.
-  mqtt.subscribe(&red);
+  //  attaching pins with channel
+  ledcAttachPin(rpin , rchannel);
+  ledcAttachPin(gpin , gchannel);
+  ledcAttachPin(bpin , bchannel);
+
+  //  dht setup
+  dht.begin();
+
+  //  feeds to be subscribed
+  mqtt.subscribe(&dht)
   
-  // Setup MQTT subscription for sw2 feed.
+}
+
+void loop()
+{
+  //  connecting with server
+  mqttconnect();
+
+  //  reading values from dht sensor
+  float tempc = dht.readTemperature();
+  float tempf = dht.readTemperature(true);
+  float tempk = tempc + 273.15;
+  float humidity = dht.readHumidity();
+  float dew_point = (tempc - (100 - humidity) / 5);  //  dew point in celcius
+
+  if (isnan(tempc)  ||  isnan(tempf)  ||  isnan(humidity))
+  {
+    Serial.println("Sensor not working!");
+    delay(1000);
+    return;
+  }
+
+  //  printing these values on serial monitor
+  String val = String(tempc) + " *C" + "\t" + String(tempf) + " *F" + "\t" + String(tempk) + " *K" + "\t" + 
+               String(humidity) + " %RH" + "\t" + String(dew_point) + " *C";
+  Serial.println(val);
+  
+
+  //  publish the DHT data to the feeds
+  mqtt.publish(&dht)
+  
+  
+
+  //  subscribe the slider values to control RGB
+  mqtt.subscribe(&red);
   mqtt.subscribe(&green);
   mqtt.subscribe(&blue);
-
-  if (!bmp.begin()){
-    Serial.println("BMP180 Sensor not found ! ! !");
-    while (1){}
-  }
-}
-
-uint32_t x=0;
-
-void loop() {
-
-  
-  p = bmp.readPressure();
-  q = bmp.readTemperature();
-  Serial.println(p);
-  Serial.println(q);
-  delay(100);
-  
-  MQTT_connect();
-
-
-
-  Adafruit_MQTT_Subscribe *subscription;
-  
-
-
-  if(! temperature.publish(q)){
-   
-  }
-  
-  if(! humidity.publish(p)){
-  
-  }
-  
   
 }
 
-
-void MQTT_connect() 
+void mqttconnect()
 {
-  int8_t ret;
-  if (mqtt.connected()){
-    return;
-  
+  //  if already connected, return
+  if (mqtt.connected())return;
+
+  //  if not, connect
+  else
+  {
+    while (true)
+    {
+      int connection = mqtt.connect();  //  mqq client has all details of client, port , username, key
+      if (connection  ==  0)
+      {
+        Serial.println("Connected to IO");
+        break;  //  connected
+      }
+      else
+      {
+        Serial.println("Can't Connect");
+        mqtt.disconnect();
+        Serial.println(mqtt.connectErrorString(connection));  //  printing error message
+        delay(5000);  //  wait for 5 seconds
+      }
+    }
   }
 
-  //Serial.print("Connecting to MQTT... ");
 
-  uint8_t retries = 3;
-  while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
-       mqtt.disconnect();
-       delay(5000);  // wait 5 seconds
-       retries--;
-       if (retries == 0) {
-         // basically die and wait for WDT to reset me
-         while (1);
-       }
-  }
-  
+  //  wait for some time
+  delay(5000);
+}
+
+void makecolor(byte r , byte g , byte b)
+{
+  //  printing values
+  Serial.print("RED : ");
+  Serial.print(r);
+  Serial.print('\t');
+  Serial.print("GREEN : ");
+  Serial.print(g);
+  Serial.print('\t');
+  Serial.print("BLUE : ");
+  Serial.println(b);
+
+  //  writing values
+  ledcWrite(rchannel , r);
+  ledcWrite(gchannel , g);
+  ledcWrite(bchannel , b);
 }
